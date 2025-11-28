@@ -23,6 +23,45 @@ function generateId(): string {
 	return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
 }
 
+function getLastModified(item: FavoriteItem): number {
+	if (typeof item === 'string') {
+		try {
+			const uri = vscode.Uri.parse(item);
+			const fsPath = uri.fsPath;
+			if (fs.existsSync(fsPath)) {
+				return fs.statSync(fsPath).mtime.getTime();
+			}
+		} catch (e) {
+			console.error('Error getting stat for', item, e);
+		}
+		return 0;
+	} else {
+		// Virtual Folder: max of children
+		if (!item.children || item.children.length === 0) return 0;
+		const childrenTimes = item.children.map(child => getLastModified(child));
+		return Math.max(...childrenTimes);
+	}
+}
+
+function sortItems(items: FavoriteItem[], sortBy: string): FavoriteItem[] {
+	if (sortBy === 'manual') return items;
+
+	const sorted = [...items];
+	sorted.sort((a, b) => {
+		if (sortBy === 'alphabetical') {
+			const nameA = typeof a === 'string' ? path.basename(vscode.Uri.parse(a).fsPath) : a.name;
+			const nameB = typeof b === 'string' ? path.basename(vscode.Uri.parse(b).fsPath) : b.name;
+			return nameA.localeCompare(nameB);
+		} else if (sortBy === 'lastModified') {
+			const timeA = getLastModified(a);
+			const timeB = getLastModified(b);
+			return timeB - timeA; // Descending (newest first)
+		}
+		return 0;
+	});
+	return sorted;
+}
+
 class FavoriteFoldersProvider implements vscode.TreeDataProvider<FavoriteFolder | vscode.TreeItem> {
 	private _onDidChangeTreeData: vscode.EventEmitter<FavoriteFolder | vscode.TreeItem | undefined | void> = new vscode.EventEmitter<FavoriteFolder | vscode.TreeItem | undefined | void>();
 	readonly onDidChangeTreeData: vscode.Event<FavoriteFolder | vscode.TreeItem | undefined | void> = this._onDidChangeTreeData.event;
@@ -78,15 +117,15 @@ class FavoriteFoldersProvider implements vscode.TreeDataProvider<FavoriteFolder 
 	}
 
 	private createTreeItems(items: FavoriteItem[]): FavoriteFolder[] {
-		const expandFirstRoot = vscode.workspace.getConfiguration('quickFolders').get<boolean>('expandFirstRoot', true);
+		const config = vscode.workspace.getConfiguration('quickFolders');
+		const expandFirstRoot = config.get<boolean>('expandFirstRoot', true);
+		const sortBy = config.get<string>('sortBy', 'manual');
 
-		return items.map((item, index) => {
+		const itemsToRender = sortItems(items, sortBy);
+
+		return itemsToRender.map((item, index) => {
 			if (typeof item === 'string') {
 				const uri = vscode.Uri.parse(item);
-				// Only expand the very first item if it's at the root (how do we know it's root? logic is simplified here)
-				// We can't easily know if we are at root in this helper without passing context. 
-				// For now, let's default to Collapsed. The original logic only expanded the first item of the *entire list*.
-				// We can pass a flag or just default to Collapsed to be safe.
 				const collapsibleState = vscode.TreeItemCollapsibleState.Collapsed;
 				
 				const treeItem: FavoriteFolder = new vscode.TreeItem(uri.fsPath.split(/[\\/]/).pop() || uri.fsPath, collapsibleState) as FavoriteFolder;

@@ -40,6 +40,16 @@
           "type": "boolean",
           "default": true,
           "description": "Automatically expand the first root folder in the Quick Folders view"
+        },
+        "quickFolders.sortBy": {
+          "type": "string",
+          "enum": [
+            "manual",
+            "alphabetical",
+            "lastModified"
+          ],
+          "default": "manual",
+          "description": "Sort order for the favorite folders. 'manual' preserves drag-and-drop order. 'alphabetical' sorts by name (A-Z). 'lastModified' sorts by the most recent modification date (newest first)."
         }
       }
     },
