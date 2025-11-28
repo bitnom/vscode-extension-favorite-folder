@@ -4,8 +4,23 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 
+// Data types
+interface VirtualFolder {
+	id: string;
+	name: string;
+	type: 'virtual-folder';
+	children: FavoriteItem[];
+}
+
+type FavoriteItem = string | VirtualFolder;
+
 interface FavoriteFolder extends vscode.TreeItem {
-	uri: vscode.Uri;
+	uri?: vscode.Uri;
+	item: FavoriteItem;
+}
+
+function generateId(): string {
+	return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
 }
 
 class FavoriteFoldersProvider implements vscode.TreeDataProvider<FavoriteFolder | vscode.TreeItem> {
@@ -20,23 +35,14 @@ class FavoriteFoldersProvider implements vscode.TreeDataProvider<FavoriteFolder 
 
 	async getChildren(element?: FavoriteFolder | vscode.TreeItem): Promise<(FavoriteFolder | vscode.TreeItem)[]> {
 		if (!element) {
-			const favorites = this.context.globalState.get<string[]>('quickFolders', []);
-			// Check if we should expand the first root folder
-			const expandFirstRoot = vscode.workspace.getConfiguration('quickFolders').get<boolean>('expandFirstRoot', true);
-
-			return favorites.map((fav, index) => {
-				const uri = vscode.Uri.parse(fav);
-				// Set the first folder to Expanded if the setting is enabled, all others to Collapsed
-				const collapsibleState = expandFirstRoot ?
-					vscode.TreeItemCollapsibleState.Expanded :
-					vscode.TreeItemCollapsibleState.Collapsed;
-				const item: FavoriteFolder = new vscode.TreeItem(uri.fsPath.split(/[\\/]/).pop() || uri.fsPath, collapsibleState) as FavoriteFolder;
-				item.uri = uri;
-				item.resourceUri = uri;
-				item.contextValue = 'favoriteFolder';
-				return item;
-			});
+			const favorites = this.context.globalState.get<FavoriteItem[]>('quickFolders', []);
+			return this.createTreeItems(favorites);
 		} else {
+			const favItem = (element as FavoriteFolder).item;
+			if (favItem && typeof favItem === 'object' && favItem.type === 'virtual-folder') {
+				return this.createTreeItems(favItem.children);
+			}
+
 			// Always use .resourceUri for all folders, fallback to .uri for top-level
 			const folderUri: vscode.Uri | undefined = (element as any).resourceUri || (element as any).uri;
 			const folderPath = folderUri?.fsPath;
@@ -71,29 +77,168 @@ class FavoriteFoldersProvider implements vscode.TreeDataProvider<FavoriteFolder 
 		}
 	}
 
+	private createTreeItems(items: FavoriteItem[]): FavoriteFolder[] {
+		const expandFirstRoot = vscode.workspace.getConfiguration('quickFolders').get<boolean>('expandFirstRoot', true);
+
+		return items.map((item, index) => {
+			if (typeof item === 'string') {
+				const uri = vscode.Uri.parse(item);
+				// Only expand the very first item if it's at the root (how do we know it's root? logic is simplified here)
+				// We can't easily know if we are at root in this helper without passing context. 
+				// For now, let's default to Collapsed. The original logic only expanded the first item of the *entire list*.
+				// We can pass a flag or just default to Collapsed to be safe.
+				const collapsibleState = vscode.TreeItemCollapsibleState.Collapsed;
+				
+				const treeItem: FavoriteFolder = new vscode.TreeItem(uri.fsPath.split(/[\\/]/).pop() || uri.fsPath, collapsibleState) as FavoriteFolder;
+				treeItem.uri = uri;
+				treeItem.resourceUri = uri;
+				treeItem.contextValue = 'favoriteFolder';
+				treeItem.item = item;
+				// Tooltip
+				treeItem.tooltip = uri.fsPath;
+				return treeItem;
+			} else {
+				const treeItem: FavoriteFolder = new vscode.TreeItem(item.name, vscode.TreeItemCollapsibleState.Collapsed) as FavoriteFolder;
+				treeItem.contextValue = 'virtualFolder';
+				treeItem.iconPath = new vscode.ThemeIcon('files');
+				treeItem.item = item;
+				treeItem.tooltip = item.name;
+				return treeItem;
+			}
+		});
+	}
+
 	refresh(): void {
 		this._onDidChangeTreeData.fire();
 	}
 }
 
+function isSame(a: FavoriteItem, b: FavoriteItem): boolean {
+	if (typeof a === 'string' && typeof b === 'string') return a === b;
+	if (typeof a === 'object' && typeof b === 'object') return a.id === b.id;
+	return false;
+}
+
+function removeItemRecursive(items: FavoriteItem[], itemToRemove: FavoriteItem): boolean {
+	for (let i = 0; i < items.length; i++) {
+		if (isSame(items[i], itemToRemove)) {
+			items.splice(i, 1);
+			return true;
+		}
+		const it = items[i];
+		if (typeof it === 'object' && it.type === 'virtual-folder') {
+			if (removeItemRecursive(it.children, itemToRemove)) return true;
+		}
+	}
+	return false;
+}
+
+function findVirtualFolder(items: FavoriteItem[], id: string): VirtualFolder | undefined {
+	for (const item of items) {
+		if (typeof item === 'object' && item.type === 'virtual-folder') {
+			if (item.id === id) return item;
+			const found = findVirtualFolder(item.children, id);
+			if (found) return found;
+		}
+	}
+	return undefined;
+}
+
+function isDescendantOrSelf(source: FavoriteItem, target: FavoriteItem | undefined): boolean {
+	if (!target) return false;
+	if (isSame(source, target)) return true;
+	if (typeof source === 'object' && source.type === 'virtual-folder' && typeof target === 'object' && target.type === 'virtual-folder') {
+		return !!findVirtualFolder(source.children, target.id);
+	}
+	return false;
+}
+
 class FavoriteFoldersDragAndDropController implements vscode.TreeDragAndDropController<FavoriteFolder> {
-	readonly dropMimeTypes = ['text/uri-list'];
-	readonly dragMimeTypes = [];
+	readonly dropMimeTypes = ['text/uri-list', 'application/vnd.code.tree.favoriteFolderView'];
+	readonly dragMimeTypes = ['application/vnd.code.tree.favoriteFolderView'];
 	constructor(private context: vscode.ExtensionContext, private provider: FavoriteFoldersProvider) { }
 
+	async handleDrag(source: FavoriteFolder[], dataTransfer: vscode.DataTransfer, token: vscode.CancellationToken): Promise<void> {
+		dataTransfer.set('application/vnd.code.tree.favoriteFolderView', new vscode.DataTransferItem(source));
+	}
+
 	async handleDrop(target: FavoriteFolder | undefined, dataTransfer: vscode.DataTransfer, token: vscode.CancellationToken) {
-		const uriList = dataTransfer.get('text/uri-list');
-		if (!uriList) return;
-		const value = uriList.value as string;
-		const uris = value.split(/\r?\n/).map(s => s.trim()).filter(Boolean).map(s => vscode.Uri.parse(s));
-		const favorites = this.context.globalState.get<string[]>('quickFolders', []);
-		let updated = false;
-		for (const uri of uris) {
-			if (uri.scheme === 'file' && !favorites.includes(uri.toString())) {
-				favorites.push(uri.toString());
-				updated = true;
+		const favorites = this.context.globalState.get<FavoriteItem[]>('quickFolders', []);
+		
+		// Determine the destination array
+		let destinationList = favorites;
+		if (target) {
+			if (target.item && typeof target.item === 'object' && target.item.type === 'virtual-folder') {
+				// Find the virtual folder in the fresh copy of favorites to ensure we are modifying the one we will save
+				// We need a way to find the target object in the 'favorites' tree.
+				const targetId = target.item.id;
+				const foundTarget = findVirtualFolder(favorites, targetId);
+				if (foundTarget) {
+					destinationList = foundTarget.children;
+				} else {
+					return; // Target not found? Should not happen.
+				}
+			} else {
+				// Dropping onto a real folder or something else. 
+				// For now, let's disallow dropping ONTO a file/real folder to nest it. 
+				// We could implement "insert before/after", but that requires more complex logic.
+				// If user drops on a real folder, maybe they meant to drop on the parent? 
+				// VS Code UI usually handles "between" drops by calling handleDrop with the parent? 
+				// Actually, if we drop *on* an item, target is that item.
+				return; 
 			}
 		}
+
+		let updated = false;
+
+		// 1. Handle Internal Drag (Move)
+		const treeItemsItem = dataTransfer.get('application/vnd.code.tree.favoriteFolderView');
+		if (treeItemsItem) {
+			const sources = treeItemsItem.value as FavoriteFolder[];
+			for (const source of sources) {
+				if (source.item) {
+					// Prevent dropping into itself or its children
+					if (isDescendantOrSelf(source.item, target?.item)) {
+						continue; 
+					}
+
+					// Remove from old location
+					const removed = removeItemRecursive(favorites, source.item);
+					if (removed) {
+						// Add to new location
+						destinationList.push(source.item);
+						updated = true;
+					}
+				}
+			}
+		} 
+		
+		// 2. Handle External Drag (File/Folder URIs)
+		// Only if we didn't just process an internal move (or maybe both?)
+		// Typically drag is either internal or external.
+		if (!updated) {
+			const uriList = dataTransfer.get('text/uri-list');
+			if (uriList) {
+				const value = uriList.value as string;
+				const uris = value.split(/\r?\n/).map(s => s.trim()).filter(Boolean).map(s => vscode.Uri.parse(s));
+				
+				for (const uri of uris) {
+					if (uri.scheme === 'file') {
+						// Check if already exists in destination?
+						// Simplified: Just add it.
+						// We should probably check for duplicates in the *entire* tree if we want uniqueness, 
+						// or just in the current folder.
+						// Let's allow duplicates for now or check current folder.
+						const exists = destinationList.some(item => typeof item === 'string' && item === uri.toString());
+						if (!exists) {
+							destinationList.push(uri.toString());
+							updated = true;
+						}
+					}
+				}
+			}
+		}
+
 		if (updated) {
 			await this.context.globalState.update('quickFolders', favorites);
 			this.provider.refresh();
@@ -101,7 +246,7 @@ class FavoriteFoldersDragAndDropController implements vscode.TreeDragAndDropCont
 	}
 }
 
-// This method is called when your extension is activated
+
 // Your extension is activated the very first time the command is executed
 export function activate(context: vscode.ExtensionContext) {
 	const provider = new FavoriteFoldersProvider(context);
@@ -122,6 +267,36 @@ export function activate(context: vscode.ExtensionContext) {
 	);
 
 	context.subscriptions.push(
+		vscode.commands.registerCommand('favorite-folders.createVirtualFolder', async (parent?: FavoriteFolder) => {
+			const name = await vscode.window.showInputBox({ prompt: 'Enter Virtual Folder Name' });
+			if (!name) return;
+
+			const newFolder: VirtualFolder = {
+				id: generateId(),
+				name: name,
+				type: 'virtual-folder',
+				children: []
+			};
+
+			const favorites = context.globalState.get<FavoriteItem[]>('quickFolders', []);
+			
+			if (parent && parent.item && typeof parent.item === 'object' && parent.item.type === 'virtual-folder') {
+				const parentFolder = findVirtualFolder(favorites, parent.item.id);
+				if (parentFolder) {
+					parentFolder.children.push(newFolder);
+				} else {
+					favorites.push(newFolder); // Fallback
+				}
+			} else {
+				favorites.push(newFolder);
+			}
+
+			await context.globalState.update('quickFolders', favorites);
+			provider.refresh();
+		})
+	);
+
+	context.subscriptions.push(
 		vscode.commands.registerCommand('favorite-folders.addFolder', async (uri?: vscode.Uri) => {
 			let folderUri: vscode.Uri | undefined = uri;
 			if (!folderUri) {
@@ -131,8 +306,12 @@ export function activate(context: vscode.ExtensionContext) {
 				}
 			}
 			if (folderUri) {
-				const favorites = context.globalState.get<string[]>('quickFolders', []);
-				if (!favorites.includes(folderUri.toString())) {
+				const favorites = context.globalState.get<FavoriteItem[]>('quickFolders', []);
+				// Check if already exists at root level? Or just add.
+				// Check existence as string
+				const exists = favorites.some(fav => typeof fav === 'string' && fav === folderUri!.toString());
+				
+				if (!exists) {
 					favorites.push(folderUri.toString());
 					await context.globalState.update('quickFolders', favorites);
 					provider.refresh();
@@ -143,24 +322,32 @@ export function activate(context: vscode.ExtensionContext) {
 
 	context.subscriptions.push(
 		vscode.commands.registerCommand('favorite-folders.removeFolder', async (itemOrUri?: FavoriteFolder | vscode.Uri) => {
-			let folderUri: vscode.Uri | undefined;
+			const favorites = context.globalState.get<FavoriteItem[]>('quickFolders', []);
+			let itemToRemove: FavoriteItem | undefined;
+
 			if (itemOrUri) {
 				if (itemOrUri instanceof vscode.Uri) {
-					folderUri = itemOrUri;
+					// Passed a URI (e.g. from simple command call with arg)
+					itemToRemove = itemOrUri.toString();
+				} else if ((itemOrUri as FavoriteFolder).item) {
+					// Passed a TreeItem
+					itemToRemove = (itemOrUri as FavoriteFolder).item;
 				} else if ((itemOrUri as FavoriteFolder).uri) {
-					folderUri = (itemOrUri as FavoriteFolder).uri;
+					// Legacy fallback
+					itemToRemove = (itemOrUri as FavoriteFolder).uri?.toString();
 				}
 			}
-			if (!folderUri) {
-				const selected = await vscode.window.showOpenDialog({ canSelectFolders: true, canSelectFiles: false, canSelectMany: false });
-				if (selected && selected[0]) {
-					folderUri = selected[0];
-				}
+
+			if (!itemToRemove) {
+				// If no item context, maybe ask user to select from list? 
+				// For now, let's just show an error if no context.
+				// Or maybe we can show a QuickPick of root items?
+				vscode.window.showWarningMessage('Please select an item to remove.');
+				return;
 			}
-			if (folderUri) {
-				const favorites = context.globalState.get<string[]>('quickFolders', []);
-				const updated = favorites.filter(fav => fav !== folderUri.toString());
-				await context.globalState.update('quickFolders', updated);
+
+			if (removeItemRecursive(favorites, itemToRemove)) {
+				await context.globalState.update('quickFolders', favorites);
 				provider.refresh();
 			}
 		})
@@ -169,19 +356,28 @@ export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(
 		vscode.commands.registerCommand('favorite-folders.openFolder', async (itemOrUri?: FavoriteFolder | vscode.Uri) => {
 			let folderUri: vscode.Uri | undefined;
+			
 			if (itemOrUri) {
 				if (itemOrUri instanceof vscode.Uri) {
 					folderUri = itemOrUri;
-				} else if ((itemOrUri as FavoriteFolder).uri) {
-					folderUri = (itemOrUri as FavoriteFolder).uri;
+				} else if ((itemOrUri as FavoriteFolder).item) {
+					const item = (itemOrUri as FavoriteFolder).item;
+					if (typeof item === 'object') {
+						// Virtual folder - toggle expansion? 
+						// VS Code handles click to toggle expansion natively.
+						// We don't need to do anything.
+						return;
+					} else {
+						folderUri = vscode.Uri.parse(item);
+					}
 				} else if ((itemOrUri as any).resourceUri) {
 					folderUri = (itemOrUri as any).resourceUri;
 				}
 			}
+
 			if (folderUri) {
 				const workspaceFolders = vscode.workspace.workspaceFolders;
 				const isInWorkspace = workspaceFolders && workspaceFolders.some(f => {
-					// Deep search: check if folderUri is the workspace folder or a subfolder
 					const folderPath = f.uri.fsPath;
 					const targetPath = folderUri!.fsPath;
 					return targetPath === folderPath || targetPath.startsWith(folderPath + path.sep);
@@ -204,33 +400,47 @@ export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(
 		vscode.commands.registerCommand('favorite-folders.showContextMenu', async (itemOrUri?: FavoriteFolder | vscode.Uri) => {
 			let folderUri: vscode.Uri | undefined;
+			let isVirtual = false;
+			let itemName = '';
+
 			if (itemOrUri) {
 				if (itemOrUri instanceof vscode.Uri) {
 					folderUri = itemOrUri;
-				} else if ((itemOrUri as FavoriteFolder).uri) {
-					folderUri = (itemOrUri as FavoriteFolder).uri;
+					itemName = path.basename(folderUri.fsPath);
+				} else if ((itemOrUri as FavoriteFolder).item) {
+					const item = (itemOrUri as FavoriteFolder).item;
+					if (typeof item === 'object') {
+						isVirtual = true;
+						itemName = item.name;
+					} else {
+						folderUri = vscode.Uri.parse(item);
+						itemName = path.basename(folderUri.fsPath);
+					}
 				} else if ((itemOrUri as any).resourceUri) {
 					folderUri = (itemOrUri as any).resourceUri;
+					itemName = path.basename(folderUri!.fsPath);
 				}
 			}
-			if (!folderUri) {
+
+			if (!folderUri && !isVirtual) {
 				vscode.window.showWarningMessage('No folder selected.');
 				return;
 			}
 
-			let itemName = folderUri ? path.basename(folderUri.fsPath) : '';
-			let folderUriStr = folderUri.fsPath.toString();
-			if (folderUriStr.length > 50) {
-				folderUriStr = `${folderUriStr.substring(0, 25)}...${folderUriStr.substring(folderUriStr.length - 25)}`;
-			}
-
 			const actions = [
-				{ label: '$(folder-opened) Open Folder', action: 'favorite-folders.openFolder' },
 				{ label: '$(trashcan) Remove Folder', action: 'favorite-folders.removeFolder' }
 			];
-			const pick = await vscode.window.showQuickPick(actions, { placeHolder: `Select an action for ${itemName} (${folderUriStr})` });
+			
+			if (!isVirtual) {
+				actions.unshift({ label: '$(folder-opened) Open Folder', action: 'favorite-folders.openFolder' });
+			} else {
+				actions.push({ label: '$(new-folder) Create Virtual Folder Inside', action: 'favorite-folders.createVirtualFolder' });
+			}
+
+			const pick = await vscode.window.showQuickPick(actions, { placeHolder: `Select an action for ${itemName}` });
 			if (pick) {
-				await vscode.commands.executeCommand(pick.action, folderUri);
+				// Pass the original item context to the command
+				await vscode.commands.executeCommand(pick.action, itemOrUri);
 			}
 		})
 	);

@@ -2,7 +2,7 @@
   "name": "quick-folders",
   "displayName": "Quick Folders",
   "description": "A Visual Studio Code extension to manage and quickly access your favorite folders. This extension allows users to bookmark frequently used directories, providing easy navigation and quick opening of folders directly from the VS Code interface. Features include adding, removing, and listing favorite folders, as well as integration with the command palette for seamless workflow enhancement.",
-  "version": "0.0.6",
+  "version": "0.0.7",
   "publisher": "enginkirmaci",
   "icon": "images/logo.png",
   "engines": {
@@ -51,6 +51,12 @@
         "icon": "$(plus)"
       },
       {
+        "command": "favorite-folders.createVirtualFolder",
+        "title": "Create Virtual Folder",
+        "shortTitle": "New Folder",
+        "icon": "$(new-folder)"
+      },
+      {
         "command": "favorite-folders.removeFolder",
         "title": "Remove Quick Folder",
         "icon": "$(trashcan)"
@@ -86,8 +92,13 @@
           "group": "inline"
         },
         {
+          "command": "favorite-folders.createVirtualFolder",
+          "when": "view == favoriteFolderView && viewItem == virtualFolder",
+          "group": "inline"
+        },
+        {
           "command": "favorite-folders.removeFolder",
-          "when": "view == favoriteFolderView && viewItem == favoriteFolder && viewItem != favoriteFolderChild",
+          "when": "view == favoriteFolderView && (viewItem == favoriteFolder || viewItem == virtualFolder) && viewItem != favoriteFolderChild",
           "group": "navigation@2"
         },
         {
@@ -96,12 +107,22 @@
           "group": "navigation@1"
         },
         {
+          "command": "favorite-folders.createVirtualFolder",
+          "when": "view == favoriteFolderView && viewItem == virtualFolder",
+          "group": "navigation@3"
+        },
+        {
           "command": "favorite-folders.showContextMenu",
-          "when": "view == favoriteFolderView && (viewItem == favoriteFolder || viewItem == favoriteFolderChild)",
+          "when": "view == favoriteFolderView && (viewItem == favoriteFolder || viewItem == favoriteFolderChild || viewItem == virtualFolder)",
           "group": "inline@99"
         }
       ],
       "view/title": [
+        {
+          "command": "favorite-folders.createVirtualFolder",
+          "when": "view == favoriteFolderView",
+          "group": "navigation@1"
+        },
         {
           "command": "favorite-folders.refresh",
           "when": "view == favoriteFolderView",
