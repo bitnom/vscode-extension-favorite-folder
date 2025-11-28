@@ -299,8 +299,35 @@ export function activate(context: vscode.ExtensionContext) {
 	// Register a configuration change listener to refresh the view when settings change
 	context.subscriptions.push(
 		vscode.workspace.onDidChangeConfiguration(e => {
-			if (e.affectsConfiguration('quickFolders.expandFirstRoot')) {
+			if (e.affectsConfiguration('quickFolders.expandFirstRoot') || e.affectsConfiguration('quickFolders.sortBy')) {
 				provider.refresh();
+			}
+		})
+	);
+
+	context.subscriptions.push(
+		vscode.commands.registerCommand('favorite-folders.sort', async () => {
+			const config = vscode.workspace.getConfiguration('quickFolders');
+			const currentSort = config.get<string>('sortBy', 'manual');
+
+			const items = [
+				{ label: 'Manual', description: 'Default order (drag & drop)', value: 'manual' },
+				{ label: 'Alphabetical', description: 'Sort by name (A-Z)', value: 'alphabetical' },
+				{ label: 'Last Modified', description: 'Sort by modification time (newest first)', value: 'lastModified' }
+			];
+
+			// Mark current selection
+			const quickPickItems = items.map(item => ({
+				...item,
+				picked: item.value === currentSort
+			}));
+
+			const selected = await vscode.window.showQuickPick(quickPickItems, {
+				placeHolder: 'Select Sort Order'
+			});
+
+			if (selected) {
+				await config.update('sortBy', selected.value, vscode.ConfigurationTarget.Global);
 			}
 		})
 	);

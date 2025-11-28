@@ -67,6 +67,11 @@
         "icon": "$(new-folder)"
       },
       {
+        "command": "favorite-folders.sort",
+        "title": "Sort Folders",
+        "icon": "$(sort-precedence)"
+      },
+      {
         "command": "favorite-folders.removeFolder",
         "title": "Remove Quick Folder",
         "icon": "$(trashcan)"
@@ -132,6 +137,11 @@
           "command": "favorite-folders.createVirtualFolder",
           "when": "view == favoriteFolderView",
           "group": "navigation@1"
+        },
+        {
+          "command": "favorite-folders.sort",
+          "when": "view == favoriteFolderView",
+          "group": "navigation@2"
         },
         {
           "command": "favorite-folders.refresh",
