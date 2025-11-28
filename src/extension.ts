@@ -102,9 +102,10 @@ class FavoriteFoldersProvider implements vscode.TreeDataProvider<FavoriteFolder 
 				if (stat.isDirectory()) {
 					(fileItem as any).uri = vscode.Uri.file(filePath); // for compatibility
 					// Set a different contextValue for second-level and deeper folders
-					fileItem.contextValue = 'favoriteFolderChild';
+					fileItem.contextValue = 'favoriteFolderChildFolder';
 				}
 				else {
+					fileItem.contextValue = 'favoriteFolderChildFile';
 					fileItem.command = {
 						command: 'vscode.open',
 						title: 'Open File',
@@ -328,6 +329,52 @@ export function activate(context: vscode.ExtensionContext) {
 
 			if (selected) {
 				await config.update('sortBy', selected.value, vscode.ConfigurationTarget.Global);
+			}
+		})
+	);
+
+	// Wrapper commands for standard file actions
+	context.subscriptions.push(
+		vscode.commands.registerCommand('favorite-folders.revealInExplorer', async (item: FavoriteFolder) => {
+			const uri = item.resourceUri || item.uri;
+			if (uri) {
+				await vscode.commands.executeCommand('revealInExplorer', uri);
+			}
+		})
+	);
+
+	context.subscriptions.push(
+		vscode.commands.registerCommand('favorite-folders.openInTerminal', async (item: FavoriteFolder) => {
+			const uri = item.resourceUri || item.uri;
+			if (uri) {
+				await vscode.commands.executeCommand('openInTerminal', uri);
+			}
+		})
+	);
+
+	context.subscriptions.push(
+		vscode.commands.registerCommand('favorite-folders.findInFolder', async (item: FavoriteFolder) => {
+			const uri = item.resourceUri || item.uri;
+			if (uri) {
+				await vscode.commands.executeCommand('filesExplorer.findInFolder', uri);
+			}
+		})
+	);
+
+	context.subscriptions.push(
+		vscode.commands.registerCommand('favorite-folders.copyPath', async (item: FavoriteFolder) => {
+			const uri = item.resourceUri || item.uri;
+			if (uri) {
+				await vscode.commands.executeCommand('copyFilePath', uri);
+			}
+		})
+	);
+
+	context.subscriptions.push(
+		vscode.commands.registerCommand('favorite-folders.copyRelativePath', async (item: FavoriteFolder) => {
+			const uri = item.resourceUri || item.uri;
+			if (uri) {
+				await vscode.commands.executeCommand('copyRelativeFilePath', uri);
 			}
 		})
 	);
