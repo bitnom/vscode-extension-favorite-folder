@@ -90,6 +90,31 @@
         "command": "favorite-folders.showContextMenu",
         "title": "More Actions",
         "icon": "$(ellipsis)"
+      },
+      {
+        "command": "favorite-folders.revealInExplorer",
+        "title": "Reveal in Explorer",
+        "icon": "$(folder-opened)"
+      },
+      {
+        "command": "favorite-folders.openInTerminal",
+        "title": "Open in Integrated Terminal",
+        "icon": "$(terminal)"
+      },
+      {
+        "command": "favorite-folders.findInFolder",
+        "title": "Find in Folder",
+        "icon": "$(search)"
+      },
+      {
+        "command": "favorite-folders.copyPath",
+        "title": "Copy Path",
+        "icon": "$(clippy)"
+      },
+      {
+        "command": "favorite-folders.copyRelativePath",
+        "title": "Copy Relative Path",
+        "icon": "$(clippy)"
       }
     ],
     "menus": {
@@ -127,27 +152,27 @@
           "group": "navigation@3"
         },
         {
-          "command": "revealInExplorer",
+          "command": "favorite-folders.revealInExplorer",
           "when": "view == favoriteFolderView && (viewItem == favoriteFolder || viewItem == favoriteFolderChildFolder || viewItem == favoriteFolderChildFile)",
           "group": "navigation@4"
         },
         {
-          "command": "openInTerminal",
+          "command": "favorite-folders.openInTerminal",
           "when": "view == favoriteFolderView && (viewItem == favoriteFolder || viewItem == favoriteFolderChildFolder)",
           "group": "navigation@5"
         },
         {
-          "command": "filesExplorer.findInFolder",
+          "command": "favorite-folders.findInFolder",
           "when": "view == favoriteFolderView && (viewItem == favoriteFolder || viewItem == favoriteFolderChildFolder)",
           "group": "navigation@6"
         },
         {
-          "command": "copyFilePath",
+          "command": "favorite-folders.copyPath",
           "when": "view == favoriteFolderView && (viewItem == favoriteFolder || viewItem == favoriteFolderChildFolder || viewItem == favoriteFolderChildFile)",
           "group": "1_cutcopypaste"
         },
         {
-          "command": "copyRelativeFilePath",
+          "command": "favorite-folders.copyRelativePath",
           "when": "view == favoriteFolderView && (viewItem == favoriteFolder || viewItem == favoriteFolderChildFolder || viewItem == favoriteFolderChildFile)",
           "group": "1_cutcopypaste"
         },

@@ -333,6 +333,57 @@ export function activate(context: vscode.ExtensionContext) {
 		})
 	);
 
+	// Wrapper commands for standard file actions
+	context.subscriptions.push(
+		vscode.commands.registerCommand('favorite-folders.revealInExplorer', async (item?: FavoriteFolder) => {
+			if (!item) return;
+			const uri = item.resourceUri || item.uri;
+			if (uri) {
+				await vscode.commands.executeCommand('revealInExplorer', uri);
+			}
+		})
+	);
+
+	context.subscriptions.push(
+		vscode.commands.registerCommand('favorite-folders.openInTerminal', async (item?: FavoriteFolder) => {
+			if (!item) return;
+			const uri = item.resourceUri || item.uri;
+			if (uri) {
+				await vscode.commands.executeCommand('openInTerminal', uri);
+			}
+		})
+	);
+
+	context.subscriptions.push(
+		vscode.commands.registerCommand('favorite-folders.findInFolder', async (item?: FavoriteFolder) => {
+			if (!item) return;
+			const uri = item.resourceUri || item.uri;
+			if (uri) {
+				await vscode.commands.executeCommand('filesExplorer.findInFolder', uri);
+			}
+		})
+	);
+
+	context.subscriptions.push(
+		vscode.commands.registerCommand('favorite-folders.copyPath', async (item?: FavoriteFolder) => {
+			if (!item) return;
+			const uri = item.resourceUri || item.uri;
+			if (uri) {
+				await vscode.commands.executeCommand('copyFilePath', uri);
+			}
+		})
+	);
+
+	context.subscriptions.push(
+		vscode.commands.registerCommand('favorite-folders.copyRelativePath', async (item?: FavoriteFolder) => {
+			if (!item) return;
+			const uri = item.resourceUri || item.uri;
+			if (uri) {
+				await vscode.commands.executeCommand('copyRelativeFilePath', uri);
+			}
+		})
+	);
+
 	context.subscriptions.push(
 		vscode.commands.registerCommand('favorite-folders.createVirtualFolder', async (parent?: FavoriteFolder) => {
 			const name = await vscode.window.showInputBox({ prompt: 'Enter Virtual Folder Name' });
