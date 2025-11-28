@@ -1,3 +1,11 @@
+## 0.0.7 | 2025/11/27
+
+- Implemented Virtual Folders for hierarchical organization of favorite folders.
+- Added Drag & Drop functionality to reorder items and move them into Virtual Folders.
+- Introduced sorting options: Manual, Alphabetical, and Last Modified (with intelligent sorting for Virtual Folders).
+- Enhanced context menus for real files and folders, providing common file explorer actions like "Reveal in Explorer", "Open in Integrated Terminal", and "Copy Path".
+- Improved context value handling for accurate menu display.
+
 ## 0.0.5 | 2025/08/25
 
 - Added the ability to automatically expand the first root folder by default.
